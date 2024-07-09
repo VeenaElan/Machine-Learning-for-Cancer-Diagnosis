@@ -1,0 +1,253 @@
+---
+output: html_document
+---
+For SVM and TUNE
+
+```{r}
+library('e1071')
+setwd('D:\\packages\\sem5\\AI')
+```
+
+
+
+
+Reading the data
+```{r}
+
+orgdata<-read.csv("wdbc.csv",header=T)
+n=nrow(orgdata)
+c=ncol(orgdata)
+n
+c
+(class(orgdata))
+```
+Normalisation and separation
+```{r}
+orgdata[, -c(1,2)] <- scale(orgdata[, -c(1,2)])
+
+BenignData=orgdata[which(orgdata$diagnosis=='B'),-c(1,2)]
+MalignantData=orgdata[which(orgdata$diagnosis=='M'),-c(1,2)]
+data=orgdata[,-c(1,2)]
+```
+To calculate Optimum K centroids for B,<br/>
+We calculate davg which is the average distance of each node from its cluster representative.
+Then we calculate dmin for each k which is the min distance between any pair of centroids<br/>
+We intend to calculate the validity ratio as davg/dmin, this means that we want to reduce the distance between the nodes and their centroids and maximise the distance between centroids.Then we find the optimum k as the number that corresponds to the minimum validity ratio<br/>
+<br/>
+<br/>
+We do for Benign data first,</br>
+We set seed to generate the same random number for the same value
+
+```{r}
+
+BenignValRatio=c()
+
+set.seed(100);
+for(k in 2:30)
+{
+  
+    davg=0
+    #KMEANS returns centroids centres ($centers) and the which cluster a node belongs to($cluster) 
+    BenignCluster <- kmeans(BenignData, k, nstart = 20)
+    
+    #Finding dAvg
+    for(i in 1:nrow(BenignData))
+    {
+      davg=davg+dist(rbind(BenignData[i,],BenignCluster$centers[BenignCluster$cluster[i],]))   
+    }
+    davg=davg/nrow(BenignData)
+    dmin=Inf
+    for(i in 1:(k-1))
+    {
+      y=BenignCluster$centers[i,]
+      x=BenignCluster$centers[(i+1):k,]
+      if(i==(k-1))
+      {
+        dis=dist(rbind(x,y))
+      }
+      else
+      {
+        dis=min(apply(x,1,function(x,y)dist(rbind(x,y)),y))     #Getting the minimum distance
+      }
+      if(dmin>dis)
+      {
+        dmin=dis
+      }
+    }
+    ValRatio=davg/dmin
+    BenignValRatio=c(BenignValRatio,ValRatio)    
+}
+BenignValRatio
+
+```
+Now we do for malignant
+```{r}
+MalignantValRatio=c()
+for(k in 2:30)
+{
+  
+    #KMEANS returns centroids centres ($centers) and the which cluster a node belongs to($cluster) 
+    MalignantCluster <- kmeans(MalignantData, k, nstart = 20)
+    davg=0
+    #Finding dAvg
+    for(i in 1:nrow(MalignantData))
+    {
+      
+      davg=davg+dist(rbind(MalignantData[i,],MalignantCluster$centers[MalignantCluster$cluster[i],]))   
+    
+    }
+    davg=davg/nrow(MalignantData)
+    dmin=Inf
+    for(i in 1:(k-1))
+    {
+      y=MalignantCluster$centers[i,]
+      x=MalignantCluster$centers[(i+1):k,]
+      
+      if(i==(k-1))
+      {
+        dis=dist(rbind(x,y))
+      }
+      else
+      {
+        dis=min(apply(x,1,function(x,y)dist(rbind(x,y)),y))     #Getting the minimum distance
+      }
+      if(dmin>dis)
+      {
+        dmin=dis
+      }
+    }
+    ValRatio=davg/dmin
+    MalignantValRatio=c(MalignantValRatio,ValRatio)    
+}
+MalignantValRatio
+
+
+```
+Now We plot the k vs validity ratio graphs
+
+```{r}
+krange=(2:30)
+plot(krange, BenignValRatio, xlim=range((2:30)), ylim=range(BenignValRatio), xlab="k", ylab="ValRatio",     main = "Benign")
+lines(krange[order(krange)], BenignValRatio[order(krange)], xlim=range(krange), ylim=range(BenignValRatio),col="blue")
+
+plot(krange, MalignantValRatio, xlim=range((2:30)), ylim=range(MalignantValRatio), xlab="k", ylab="ValRatio",     main ="Malignant")
+lines(krange[order(krange)], MalignantValRatio[order(krange)], xlim=range(krange), ylim=range(MalignantValRatio),col="red")
+```
+
+Taking K=3 we proceed as per the research paper
+
+```{r}
+BenignCluster <- kmeans(BenignData, 3, nstart = 20)
+MalignantCluster <- kmeans(MalignantData, 3, nstart = 20)
+
+```
+
+Now we define new features for all the nodes. We define new 6 features that reduces the feature space to 6 from 32. The similarity between the untested and the symbolic tumors plays an important role. To measure the similarity we use a membership function as per the research paper.
+
+Finding Min and Max for each type and each cluster of each feature
+Example:
+Among all 1st feature that belongs to first cluster find minimum 
+Do similarly for all others too!
+
+
+```{r}
+#Finding MIN and MAX of each type
+minBenign=aggregate(BenignData, by=list(BenignCluster$cluster), FUN=min)
+
+maxBenign=aggregate(BenignData, by=list(BenignCluster$cluster), FUN=max)
+
+minMalignant=aggregate(MalignantData, by=list(MalignantCluster$cluster), FUN=min)
+
+maxMalignant=aggregate(MalignantData, by=list(MalignantCluster$cluster), FUN=max)
+
+minBenign=minBenign[2:31]
+maxBenign=maxBenign[2:31]
+minMalignant=minMalignant[2:31]
+maxMalignant=maxMalignant[2:31]
+
+#For removing the cluster numbers as a column
+#Example of one
+minBenign
+```
+
+
+```{r}
+
+Benigncenters=BenignCluster$centers
+Malignantcenters=MalignantCluster$centers
+BenignDen=c()
+MalignantDen=c()
+for(i in 1:3)
+{
+  #For each we find the max value of centroid value minus min value or max value of the same feature
+  #Either of these must give the maximum
+  temp1=apply(rbind(abs(Benigncenters[i,]-minBenign[i,]),abs(maxBenign[i,]-Benigncenters[i,])),2,max)
+  
+  BenignDen=rbind(BenignDen,temp1)
+  
+  temp2=apply(rbind(abs(Malignantcenters[i,]-minMalignant[i,]),abs(maxMalignant[i,]-Malignantcenters[i,])),2,max)
+  
+  
+   MalignantDen=rbind(MalignantDen,temp2)
+}
+#Can also use when 3 rows are aready present,Initially throws error
+#MalignantDen[1:3,]=apply(rbind(abs(Malignantcenters[1:3,]-minMalignant[1:3,]),abs(maxMalignant[1:3,]-M#alignantcenters[1:3,])),2,max)
+
+```
+We create new features for each row and this is the training data!!
+```{r}
+F=ncol(data)
+for(i in 1:n)
+{
+  newfeature=c()
+  for(c in 1:3)
+  {
+    val=0
+    for(f in 1:F)
+    {
+      if(data[i,f]>=minBenign[c,f] & data[i,f]<=maxBenign[c,f])
+      {
+        val=val+1-(abs(Benigncenters[c,f]-data[i,f])/BenignDen[c,f])
+      }
+    }
+    val=val/F
+    newfeature=c(newfeature,val)
+  }
+  for(c in 1:3)
+  {
+    val=0
+    for(f in 1:F)
+    {
+      if(data[i,f]>=minMalignant[c,f] & data[i,f]<=maxMalignant[c,f])
+      {
+        val=val+1-(abs(Malignantcenters[c,f]-data[i,f])/MalignantDen[c,f])
+      }
+    }
+    val=val/F
+    newfeature=c(newfeature,val)
+  }
+  
+  if(i==1)
+  {
+    finaldata=newfeature
+  }
+  else
+  {
+    finaldata=rbind(finaldata,newfeature)
+  }
+}
+
+finaldata
+```
+
+
+```{r}
+class=orgdata[,2]
+svm_tune <- tune(svm, train.x=finaldata, train.y=class, kernel="radial", ranges=list(cost=10^(-1:2), gamma=c(.1,.5,1)))
+#plot(svm_tune)
+print(svm_tune)
+model <- svm(finaldata, class,kernel = 'radial', gamma = 0.1, cost = 10, cross=10)
+summary(model)
+
+```
+
